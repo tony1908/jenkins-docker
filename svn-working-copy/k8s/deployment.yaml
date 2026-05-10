@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: svn-dind-sample
+  labels:
+    app: svn-dind-sample
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: svn-dind-sample
+  template:
+    metadata:
+      labels:
+        app: svn-dind-sample
+    spec:
+      containers:
+        - name: svn-dind-sample
+          image: registry:5000/local/svn-dind-sample:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          command:
+            - node
+            - -e
+          args:
+            - |
+              const http = require('http');
+              const { message } = require('./src');
+              http.createServer((req, res) => {
+                res.end(`${message('Kubernetes')}\n`);
+              }).listen(3000, '0.0.0.0');
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 2
+            periodSeconds: 5

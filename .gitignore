@@ -1,0 +1,18 @@
+# Generated Kubernetes credentials for Dockerized Jenkins.
+kubeconfig/*
+!kubeconfig/.gitkeep
+
+# Local VCS metadata embedded in sample fixtures.
+sample-app/.git/
+svn-working-copy/.svn/
+
+# Local runtime/config files.
+.env
+.env.*
+*.tmp
+*.log
+
+# Docker/Jenkins runtime data if bind-mounted during experiments.
+jenkins_home/
+docker_data/
+registry_data/

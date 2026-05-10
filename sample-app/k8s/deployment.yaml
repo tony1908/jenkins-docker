@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jenkins-dind-sample
+  labels:
+    app: jenkins-dind-sample
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jenkins-dind-sample
+  template:
+    metadata:
+      labels:
+        app: jenkins-dind-sample
+    spec:
+      containers:
+        - name: jenkins-dind-sample
+          image: registry:5000/local/jenkins-dind-sample:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          command:
+            - node
+            - -e
+          args:
+            - |
+              const http = require('http');
+              const { greeting } = require('./src');
+              http.createServer((req, res) => {
+                res.end(`${greeting('Kubernetes')}\n`);
+              }).listen(3000, '0.0.0.0');
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 2
+            periodSeconds: 5

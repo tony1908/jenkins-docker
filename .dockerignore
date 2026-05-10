@@ -1,0 +1,10 @@
+.git
+.gitignore
+README.md
+docker-compose.yml
+Jenkinsfile
+jenkins-init
+sample-app
+svn
+svn-app
+kubeconfig
