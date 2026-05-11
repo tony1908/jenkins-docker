@@ -9,6 +9,7 @@ svn-working-copy/.svn/
 # Local runtime/config files.
 .env
 .env.*
+!.env.example
 *.tmp
 *.log
 

@@ -4,7 +4,7 @@ import org.jenkinsci.plugins.workflow.job.WorkflowJob
 
 def jenkins = Jenkins.get()
 def jobName = 'svn-dind-sample'
-def svnRemote = 'file:///svn/basic-repo/trunk'
+def svnRemote = System.getenv('SVN_REMOTE') ?: 'file:///svn/basic-repo/trunk'
 def pipelineScript = """
 pipeline {
     agent any
@@ -100,7 +100,7 @@ if (job == null) {
     shouldSchedule = true
 }
 
-job.setDescription("Polls ${svnRemote} every minute and builds a Docker image when SVN changes.")
+job.setDescription("Builds ${svnRemote} when SVN changes. pollSCM stays enabled so the repository post-commit hook can notify Jenkins.")
 job.setDefinition(new CpsFlowDefinition(pipelineScript, true))
 job.save()
 

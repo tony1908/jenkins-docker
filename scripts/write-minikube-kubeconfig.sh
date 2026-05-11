@@ -20,7 +20,7 @@ tmp="${output}.tmp"
 
 kubectl config view --raw --flatten --minify --context "$context" > "$tmp"
 kubectl --kubeconfig "$tmp" config set-cluster "$cluster_name" --server="https://${minikube_ip}:8443" >/dev/null
-chmod 0600 -- "$tmp"
-mv -- "$tmp" "$output"
+chmod 0600 "$tmp"
+mv "$tmp" "$output"
 
 echo "Wrote ${output} for ${context} at https://${minikube_ip}:8443"

@@ -1,93 +1,193 @@
-# Jenkins with Docker-in-Docker
+# Jenkins con Docker-in-Docker
 
-This project builds a custom Jenkins image with the Docker CLI, Buildx, Docker Compose, `kubectl`, and the Jenkins Docker Pipeline plugin installed. Docker commands run against a separate `docker:dind` daemon on the private Compose network.
+Este proyecto levanta Jenkins en Docker con Docker CLI, Buildx, Docker Compose, `kubectl` y plugins base de Jenkins. Los comandos `docker` no usan el socket Docker del host; Jenkins habla con un daemon separado `docker:dind` dentro de la red privada de Compose.
 
-The sample pipelines can also push images to a local registry and deploy them to a local Minikube cluster.
+Los pipelines de ejemplo pueden construir imagenes, publicarlas en un registry local y desplegarlas en Minikube.
 
-## Minikube setup
+## Configuracion local
 
-Start Minikube with access to the local Compose registry:
+Copia el archivo de ejemplo y ajusta las rutas a tu maquina:
+
+```sh
+cp .env.example .env
+```
+
+Variables utiles:
+
+- `LOCAL_PROJECT_PATH`: ruta absoluta a un checkout local que Jenkins vera como `/workspace/project`.
+- `SVN_REPO_PATH`: ruta absoluta al repositorio SVN local, es decir el directorio que contiene `conf/`, `db/`, `hooks/`, `locks/` y `format`.
+- `SVN_REMOTE`: URL SVN que usara el job generado. Debe usar la ruta del contenedor, por ejemplo `file:///svn/external-repo/branches/development`.
+- `REGISTRY_HOST_PORT`: puerto del host para exponer el registry local. Por defecto es `5001`.
+- `MINIKUBE_DOCKER_NETWORK`: red Docker del perfil de Minikube. Por defecto es `minikube`.
+
+Si tu repositorio SVN en el host se ve asi:
+
+```text
+file:///ruta/en/tu/maquina/svn-repo/repo/branches
+```
+
+no uses esa URL dentro de Jenkins, porque el contenedor no ve el filesystem del host con la misma ruta. Monta el repositorio con `SVN_REPO_PATH` y usa la ruta del contenedor:
+
+```text
+file:///svn/external-repo/branches/<nombre-de-rama>
+```
+
+Usa una rama concreta, por ejemplo:
+
+```text
+file:///svn/external-repo/branches/development
+```
+
+`branches` por si solo solo contiene carpetas de ramas; normalmente no es el proyecto que quieres compilar.
+
+## Minikube
+
+Inicia Minikube permitiendo que el cluster pueda descargar imagenes del registry local:
 
 ```sh
 minikube start --driver=docker --insecure-registry=registry:5000
 ```
 
-Generate a kubeconfig that works from inside the Jenkins container:
+Genera el kubeconfig que funciona desde dentro del contenedor de Jenkins:
 
 ```sh
 ./scripts/write-minikube-kubeconfig.sh
 ```
 
-If you use a non-default Minikube profile:
+Si usas otro perfil de Minikube:
 
 ```sh
-MINIKUBE_PROFILE=my-profile KUBE_CONTEXT=my-profile ./scripts/write-minikube-kubeconfig.sh
-MINIKUBE_DOCKER_NETWORK=my-profile docker compose up -d --build
+MINIKUBE_PROFILE=mi-perfil KUBE_CONTEXT=mi-perfil ./scripts/write-minikube-kubeconfig.sh
+MINIKUBE_DOCKER_NETWORK=mi-perfil docker compose up -d --build
 ```
 
-## Build and start
+## Levantar Jenkins
 
 ```sh
 docker compose up -d --build
 ```
 
-Open Jenkins at:
+Abre Jenkins en:
 
 ```text
 http://localhost:8080
 ```
 
-Get the first admin password:
+Obtiene la primera password de admin:
 
 ```sh
 docker compose exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
 ```
 
-## Verify Docker from Jenkins
+Si el puerto `5000` del host esta ocupado, no afecta a Jenkins ni a Minikube: dentro de Docker el registry sigue siendo `registry:5000`. El puerto del host por defecto es `5001` y se puede cambiar con `REGISTRY_HOST_PORT`.
 
-Create a Pipeline job and use the included `Jenkinsfile`, or run these commands in any Jenkins shell step:
+## Verificar Docker desde Jenkins
+
+En cualquier shell step de Jenkins puedes validar:
 
 ```sh
 docker version
 docker run --rm hello-world
 ```
 
-## Local sample build
+## Montar un proyecto local
 
-The `sample-app` directory is a local Node app mounted into Jenkins at `/workspace/sample-app`.
+Define `LOCAL_PROJECT_PATH` en `.env`:
 
-On Jenkins startup, `jenkins-init/create-local-build-job.groovy` creates a Pipeline job named `local-dind-sample`. The job:
+```sh
+LOCAL_PROJECT_PATH=/ruta/absoluta/a/tu/proyecto
+```
 
-- copies the local app into the Jenkins workspace,
-- runs `npm test` inside `node:22-alpine`,
-- builds `registry:5000/local/jenkins-dind-sample:${BUILD_NUMBER}`,
-- pushes the image to the local registry,
-- runs the image as a smoke test,
-- applies `sample-app/k8s` to Minikube and rolls out the new image.
+Jenkins lo vera como:
 
-Open the job at:
+```text
+/workspace/project
+```
+
+Para builds con Docker-in-Docker, copia ese proyecto al workspace de Jenkins antes de usar `docker build` o `docker run -v "$PWD:..."`, porque el daemon DinD comparte con Jenkins el volumen `jenkins_home`, no cualquier ruta del host.
+
+## Usar tu propio repositorio SVN
+
+Define el repositorio SVN local en `.env`:
+
+```sh
+SVN_REPO_PATH=/ruta/absoluta/a/tu/svn-repo/repo
+```
+
+Ese directorio se monta dentro del contenedor como:
+
+```text
+/svn/external-repo
+```
+
+Entonces configura el job de Jenkins con una URL del contenedor:
+
+```text
+file:///svn/external-repo/trunk
+```
+
+o con una rama:
+
+```text
+file:///svn/external-repo/branches/mi-rama
+```
+
+Si quieres que el job generado `svn-dind-sample` use tu repositorio, define tambien:
+
+```sh
+SVN_REMOTE=file:///svn/external-repo/branches/mi-rama
+```
+
+Despues recrea Jenkins para que lea las variables y vuelva a generar la definicion del job:
+
+```sh
+docker compose up -d --force-recreate jenkins
+```
+
+Puedes probar desde dentro del contenedor:
+
+```sh
+docker compose exec jenkins svn list file:///svn/external-repo/branches
+docker compose exec jenkins svn info file:///svn/external-repo/branches/mi-rama
+```
+
+## Job local de ejemplo
+
+El directorio `sample-app` se monta en Jenkins como `/workspace/sample-app`.
+
+Al arrancar Jenkins, `jenkins-init/create-local-build-job.groovy` crea un Pipeline llamado `local-dind-sample`. El job:
+
+- copia `sample-app` al workspace de Jenkins;
+- ejecuta `npm test` dentro de `node:22-alpine`;
+- construye `registry:5000/local/jenkins-dind-sample:${BUILD_NUMBER}`;
+- publica la imagen en el registry local;
+- ejecuta la imagen como smoke test;
+- despliega `sample-app/k8s` en Minikube;
+- prueba el Service de Kubernetes con `kubectl port-forward` y `curl`.
+
+Abre el job en:
 
 ```text
 http://localhost:8080/job/local-dind-sample/
 ```
 
-## Local SVN build
+## Job SVN de ejemplo
 
-The `svn/basic-repo` directory is a local SVN repository. Jenkins mounts it at `/svn/basic-repo` and the `svn-dind-sample` Pipeline polls this URL every minute:
+El directorio `svn/basic-repo` es un repositorio SVN local de ejemplo. Jenkins lo monta como `/svn/basic-repo` y el job `svn-dind-sample` usa por defecto:
 
 ```text
 file:///svn/basic-repo/trunk
 ```
 
-The job checks out the latest SVN revision, runs tests in `node:22-alpine`, builds `registry:5000/local/svn-dind-sample:${BUILD_NUMBER}`, pushes the image, runs it as a smoke test, and deploys `k8s/` to Minikube.
+El job hace checkout, corre tests en `node:22-alpine`, construye `registry:5000/local/svn-dind-sample:${BUILD_NUMBER}`, publica la imagen, ejecuta smoke test de imagen y despliega `k8s/` en Minikube.
 
-Open the job at:
+Abre el job en:
 
 ```text
 http://localhost:8080/job/svn-dind-sample/
 ```
 
-To test another commit from the host:
+Para probar otro commit sobre el repo de ejemplo:
 
 ```sh
 svn checkout file://$PWD/svn/basic-repo/trunk svn-working-copy
@@ -95,12 +195,14 @@ printf '\n// another commit\n' >> svn-working-copy/src/index.js
 svn commit svn-working-copy -m "Test Jenkins SVN polling"
 ```
 
-Jenkins will build the new revision on the next SCM poll.
+El hook `post-commit` de ejemplo intenta avisar a Jenkins con `notifyCommit`. Si Jenkins no esta disponible, el commit no se bloquea y `pollSCM` queda como respaldo.
 
-## Notes
+## Notas
 
-- The DinD daemon listens on port `2375` only inside the Compose network. Do not publish that port to the host.
-- The `docker` service is privileged because Docker-in-Docker needs nested container support.
-- Jenkins data is stored in the `jenkins_home` Docker volume, DinD image/layer data is stored in `docker_data`, and local registry images are stored in `registry_data`.
-- The `jenkins_home` volume is mounted into both Jenkins and the DinD sidecar so `docker run -v "$PWD:/app"` works from Jenkins jobs.
-- Jenkins and the registry attach to Docker's Minikube network so Jenkins can reach the Kubernetes API and Minikube can pull `registry:5000/...` images. The default network name is `minikube`; set `MINIKUBE_DOCKER_NETWORK` when the Minikube profile uses another network name.
+- El daemon DinD escucha en `2375` solo dentro de la red de Compose. No publiques ese puerto al host.
+- El servicio `docker` es privilegiado porque Docker-in-Docker necesita soporte para contenedores anidados.
+- Los datos de Jenkins viven en el volumen `jenkins_home`.
+- Las capas e imagenes del daemon DinD viven en `docker_data`.
+- Las imagenes del registry local viven en `registry_data`.
+- El volumen `jenkins_home` esta montado en Jenkins y en DinD para que los comandos `docker run -v "$PWD:/app"` funcionen cuando `$PWD` esta bajo `/var/jenkins_home/workspace`.
+- Jenkins y el registry se conectan a la red Docker de Minikube para que Jenkins alcance el API server y Minikube pueda descargar imagenes `registry:5000/...`.

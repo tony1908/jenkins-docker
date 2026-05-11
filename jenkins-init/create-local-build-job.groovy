@@ -27,7 +27,7 @@ pipeline {
         stage('Inspect code') {
             steps {
                 dir('sample-app') {
-                    sh 'pwd && ls -la && git rev-parse --short HEAD'
+                    sh 'pwd && ls -la && (git rev-parse --short HEAD || echo "No Git metadata in mounted sample copy")'
                 }
             }
         }
@@ -73,6 +73,34 @@ pipeline {
                         kubectl -n "\\$KUBE_NAMESPACE" get deploy,svc,pods -l app=jenkins-dind-sample -o wide
                     """
                 }
+            }
+        }
+
+        stage('Smoke test Kubernetes service') {
+            steps {
+                sh """
+                    set -eu
+
+                    LOG="\\$WORKSPACE/port-forward-jenkins-dind-sample.log"
+                    kubectl -n "\\$KUBE_NAMESPACE" port-forward svc/jenkins-dind-sample 18081:80 > "\\$LOG" 2>&1 &
+                    PF_PID=\\$!
+                    trap 'kill "\\$PF_PID" >/dev/null 2>&1 || true' EXIT
+
+                    for i in 1 2 3 4 5 6 7 8 9 10; do
+                      if curl -fsS http://127.0.0.1:18081/; then
+                        echo
+                        exit 0
+                      fi
+                      if ! kill -0 "\\$PF_PID" >/dev/null 2>&1; then
+                        cat "\\$LOG"
+                        exit 1
+                      fi
+                      sleep 2
+                    done
+
+                    cat "\\$LOG"
+                    exit 1
+                """
             }
         }
     }

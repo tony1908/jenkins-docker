@@ -22,7 +22,12 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 ARG KUBECTL_VERSION=v1.35.1
-RUN curl -fsSLo /usr/local/bin/kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" \
+ARG TARGETARCH
+RUN case "${TARGETARCH}" in \
+        amd64|arm64) kubectl_arch="${TARGETARCH}" ;; \
+        *) echo "Unsupported kubectl architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+    && curl -fsSLo /usr/local/bin/kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${kubectl_arch}/kubectl" \
     && chmod 0755 /usr/local/bin/kubectl
 
 COPY --chown=jenkins:jenkins plugins.txt /usr/share/jenkins/ref/plugins.txt

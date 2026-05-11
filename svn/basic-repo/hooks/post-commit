@@ -1,0 +1,23 @@
+#!/bin/sh
+REPOS="$1"
+REV="$2"
+
+JENKINS_URL="${JENKINS_URL:-http://localhost:8080}"
+
+SVNLOOK="${SVNLOOK:-$(command -v svnlook 2>/dev/null || true)}"
+CURL="${CURL:-$(command -v curl 2>/dev/null || true)}"
+
+if [ -z "$SVNLOOK" ] || [ -z "$CURL" ]; then
+  exit 0
+fi
+
+UUID="$("$SVNLOOK" uuid "$REPOS")"
+CHANGED="$("$SVNLOOK" changed --revision "$REV" "$REPOS")"
+
+"$CURL" -fsS \
+  --max-time 5 \
+  -X POST \
+  -H "Content-Type: text/plain; charset=UTF-8" \
+  --data "$CHANGED" \
+  "$JENKINS_URL/subversion/$UUID/notifyCommit?rev=$REV" \
+  >/dev/null 2>&1 || true
