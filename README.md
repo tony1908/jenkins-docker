@@ -1,6 +1,6 @@
 # Jenkins con Docker-in-Docker
 
-Este proyecto levanta Jenkins en Docker con Docker CLI, Buildx, Docker Compose, `kubectl` y plugins base de Jenkins. Los comandos `docker` no usan el socket Docker del host; Jenkins habla con un daemon separado `docker:dind` dentro de la red privada de Compose.
+Este proyecto levanta Jenkins en Docker con Maven, Docker CLI, Buildx, Docker Compose, `kubectl` y plugins base de Jenkins. Los comandos `docker` no usan el socket Docker del host; Jenkins habla con un daemon separado `docker:dind` dentro de la red privada de Compose.
 
 Los pipelines de ejemplo pueden construir imagenes, publicarlas en un registry local y desplegarlas en Minikube.
 
@@ -15,6 +15,7 @@ cp .env.example .env
 Variables utiles:
 
 - `LOCAL_PROJECT_PATH`: ruta absoluta a un checkout local que Jenkins vera como `/workspace/project`.
+- `MAVEN_M2_PATH`: ruta absoluta a tu cache local de Maven. Por defecto usa `${HOME}/.m2` y Jenkins la vera como `/var/jenkins_home/.m2`.
 - `SVN_REPO_PATH`: ruta absoluta al repositorio SVN local, es decir el directorio que contiene `conf/`, `db/`, `hooks/`, `locks/` y `format`.
 - `SVN_REMOTE`: URL SVN que usara el job generado. Debe usar la ruta del contenedor, por ejemplo `file:///svn/external-repo/branches/development`.
 - `REGISTRY_HOST_PORT`: puerto del host para exponer el registry local. Por defecto es `5001`.
@@ -81,11 +82,39 @@ docker compose exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
 
 Si el puerto `5000` del host esta ocupado, no afecta a Jenkins ni a Minikube: dentro de Docker el registry sigue siendo `registry:5000`. El puerto del host por defecto es `5001` y se puede cambiar con `REGISTRY_HOST_PORT`.
 
+## Credenciales y datos sensibles
+
+No subas credenciales al repositorio. Este proyecto espera que los valores privados vivan fuera de Git:
+
+- `.env` contiene rutas locales y esta ignorado por Git.
+- `kubeconfig/` contiene credenciales generadas de Kubernetes y esta ignorado por Git.
+- `${HOME}/.m2/settings.xml` puede contener usuarios o tokens de Maven/JFrog y se monta desde tu maquina, pero no forma parte del repo.
+- Las credenciales de Jenkins se crean desde la UI de Jenkins y quedan guardadas en el volumen local `jenkins_home`, no en archivos versionados.
+
+Para publicar imagenes en JFrog desde un Jenkinsfile que use `docker.withRegistry(..., 'jfrog-cred')`, crea una credencial en Jenkins:
+
+```text
+Manage Jenkins -> Credentials -> System -> Global credentials -> Add Credentials
+```
+
+Usa estos valores:
+
+```text
+Kind: Username with password
+Scope: Global
+Username: tu usuario de JFrog
+Password: un access token de JFrog
+ID: jfrog-cred
+```
+
+Para publicar artefactos Maven, configura los servidores en tu `~/.m2/settings.xml`. El `id` del servidor debe coincidir con el `id` usado por el `pom.xml` o por `-DaltSnapshotDeploymentRepository` / `-DaltReleaseDeploymentRepository`. No pongas tokens en `pom.xml`, `Jenkinsfile`, `.env.example` ni `README.md`.
+
 ## Verificar Docker desde Jenkins
 
 En cualquier shell step de Jenkins puedes validar:
 
 ```sh
+mvn -version
 docker version
 docker run --rm hello-world
 ```
@@ -105,6 +134,32 @@ Jenkins lo vera como:
 ```
 
 Para builds con Docker-in-Docker, copia ese proyecto al workspace de Jenkins antes de usar `docker build` o `docker run -v "$PWD:..."`, porque el daemon DinD comparte con Jenkins el volumen `jenkins_home`, no cualquier ruta del host.
+
+## Usar tu cache local de Maven
+
+Por defecto Compose monta la cache Maven del host:
+
+```text
+${HOME}/.m2
+```
+
+dentro de Jenkins como:
+
+```text
+/var/jenkins_home/.m2
+```
+
+Si quieres usar otra ruta, define `MAVEN_M2_PATH` en `.env`:
+
+```sh
+MAVEN_M2_PATH=/ruta/absoluta/a/tu/.m2
+```
+
+Despues recrea Jenkins para aplicar el montaje:
+
+```sh
+docker compose up -d --force-recreate jenkins
+```
 
 ## Usar tu propio repositorio SVN
 

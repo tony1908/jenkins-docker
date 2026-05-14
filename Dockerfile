@@ -21,6 +21,16 @@ RUN apt-get update \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+ARG MAVEN_VERSION=3.9.9
+RUN curl -fsSLo /tmp/apache-maven.tar.gz "https://archive.apache.org/dist/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz" \
+    && tar -xzf /tmp/apache-maven.tar.gz -C /opt \
+    && ln -s "/opt/apache-maven-${MAVEN_VERSION}" /opt/maven \
+    && ln -s /opt/maven/bin/mvn /usr/local/bin/mvn \
+    && ln -s "${JAVA_HOME}/bin/java" /usr/local/bin/java \
+    && rm /tmp/apache-maven.tar.gz
+ENV MAVEN_HOME=/opt/maven
+ENV PATH="${JAVA_HOME}/bin:${MAVEN_HOME}/bin:${PATH}"
+
 ARG KUBECTL_VERSION=v1.35.1
 ARG TARGETARCH
 RUN case "${TARGETARCH}" in \

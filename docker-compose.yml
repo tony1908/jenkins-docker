@@ -27,6 +27,10 @@ services:
         target: /workspace/project
         read_only: true
       - type: bind
+        source: ${MAVEN_M2_PATH:-${HOME}/.m2}
+        target: /var/jenkins_home/.m2
+        read_only: false
+      - type: bind
         source: ${SVN_REPO_PATH:-./svn/basic-repo}
         target: /svn/external-repo
         read_only: false

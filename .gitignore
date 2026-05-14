@@ -13,6 +13,11 @@ svn-working-copy/.svn/
 *.tmp
 *.log
 
+# Local Maven/JFrog credential files if someone creates them inside this repo.
+.m2/
+settings.xml
+settings-security.xml
+
 # Docker/Jenkins runtime data if bind-mounted during experiments.
 jenkins_home/
 docker_data/
